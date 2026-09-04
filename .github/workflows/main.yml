@@ -1,0 +1,41 @@
+name: Windows RDP Arianto Lumajang Hardcoded
+
+on:
+  workflow_dispatch:
+
+jobs:
+  windows-rdp:
+    runs-on: windows-latest
+    steps:
+      - name: Setup Tailscale
+        uses: tailscale/github-action@v2
+        with:
+          authkey: tskey-auth-k387gupeXD11CNTRL-uv45CJdo4cgEAVejQAn4cgUrh2YwzLsT
+
+      - name: Info Pemilik VPS (Arianto Lumajang)
+        run: |
+          Write-Host "=========================================="
+          Write-Host "  VPS RDP MILIK: Arianto Lumajang"
+          Write-Host "  LOKASI: Lumajang, Indonesia"
+          Write-Host "=========================================="
+          Write-Host "=== SPESIFIKASI MESIN (RAM 16GB) ==="
+          systeminfo | findstr /C:"Total Physical Memory"
+          wmic cpu get name
+
+      - name: Konfigurasi RDP & Password
+        run: |
+          net user runneradmin "AriantoLumajang123!@"
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -name "fDenyTSConnections" -value 0
+          Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -name "UserAuthentication" -value 1
+
+      - name: Tampilkan IP Tailscale
+        run: |
+          Write-Host "=== GUNAKAN IP DI BAWAH INI UNTUK LOGIN RDP (Arianto Lumajang) ==="
+          tailscale ip -4
+
+      - name: Keep Alive (Sesi Aktif 6 Jam)
+        run: |
+          Write-Host "RDP Arianto Lumajang Siap Digunakan. Cek log 'Tampilkan IP Tailscale' untuk melihat IP."
+          Write-Host "Mesin ini memiliki RAM 16GB. Sesi akan otomatis tertutup oleh GitHub dalam 6 jam."
+          while ($true) { Start-Sleep -Seconds 300 }
