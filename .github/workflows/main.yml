@@ -2,10 +2,16 @@ name: Windows RDP Arianto Lumajang
 
 on:
   workflow_dispatch:
+    inputs:
+      tailscale_authkey:
+        description: "Masukkan Tailscale Auth Key"
+        required: true
+        type: string
 
 jobs:
   windows-rdp:
     runs-on: windows-latest
+
     steps:
       - name: Info Pemilik VPS (Arianto Lumajang)
         run: |
@@ -13,34 +19,67 @@ jobs:
           Write-Host "  VPS RDP MILIK: Arianto Lumajang"
           Write-Host "  LOKASI: Lumajang, Indonesia"
           Write-Host "=========================================="
-          Write-Host "=== SPESIFIKASI MESIN (RAM 16GB) ==="
-          Get-CimInstance Win32_ComputerSystem | Select-Object TotalPhysicalMemory
-          Get-CimInstance Win32_Processor | Select-Object Name
+          Write-Host "=== SPESIFIKASI MESIN ==="
+          Get-CimInstance Win32_ComputerSystem |
+            Select-Object TotalPhysicalMemory
+
+          Get-CimInstance Win32_Processor |
+            Select-Object Name
 
       - name: Install & Setup Tailscale Service
+        env:
+          TAILSCALE_AUTHKEY: ${{ inputs.tailscale_authkey }}
         run: |
           Write-Host "Menginstal Tailscale..."
-          winget install --id Tailscale.Tailscale -e --accept-source-agreements --accept-package-agreements
-          
+
+          winget install --id Tailscale.Tailscale -e `
+            --accept-source-agreements `
+            --accept-package-agreements
+
           Write-Host "Menyalakan Tailscale sebagai Service sistem..."
           Start-Service Tailscale
-          
-          Write-Host "Menghubungkan ke Tailscale..."
-          & "C:\Program Files\Tailscale\tailscale.exe" up --authkey="tskey-auth-kaY8zm1zxB21CNTRL-xjY8VLMnFvhPuxpMxegFvhpcbD42xDVDM" --accept-routes --unattended
 
-      - name: Konfigurasi RDP & Password
+          Write-Host "Menghubungkan ke Tailscale..."
+
+          & "C:\Program Files\Tailscale\tailscale.exe" up `
+            --authkey="$env:TAILSCALE_AUTHKEY" `
+            --accept-routes `
+            --unattended
+
+      - name: Konfigurasi RDP
         run: |
+          Write-Host "Mengaktifkan RDP..."
+
           net user runneradmin "AriantoLumajang123!@"
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -name "fDenyTSConnections" -value 0
-          Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -name "UserAuthentication" -value 1
+
+          Set-ItemProperty `
+            -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' `
+            -Name "fDenyTSConnections" `
+            -Value 0
+
+          Enable-NetFirewallRule `
+            -DisplayGroup "Remote Desktop"
+
+          Set-ItemProperty `
+            -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' `
+            -Name "UserAuthentication" `
+            -Value 1
 
       - name: Tampilkan IP Tailscale
         run: |
-          Write-Host "=== GUNAKAN IP DI BAWAH INI UNTUK LOGIN RDP (Arianto Lumajang) ==="
+          Write-Host "=========================================="
+          Write-Host "   RDP ARIANTO LUMAJANG SIAP"
+          Write-Host "=========================================="
+          Write-Host "IP Tailscale:"
           & "C:\Program Files\Tailscale\tailscale.exe" ip -4
+          Write-Host "=========================================="
+          Write-Host "Username : runneradmin"
+          Write-Host "Password : AriantoLumajang123!@"
+          Write-Host "=========================================="
 
-      - name: Keep Alive (Sesi Aktif 6 Jam)
+      - name: Keep Alive
         run: |
-          Write-Host "RDP Arianto Lumajang Siap Digunakan. Cek log 'Tampilkan IP Tailscale' untuk melihat IP."
-          while ($true) { Start-Sleep -Seconds 300 }
+          Write-Host "RDP aktif selama sesi runner tersedia."
+          while ($true) {
+            Start-Sleep -Seconds 300
+          }
