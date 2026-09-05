@@ -3,190 +3,504 @@ name: Windows RDP Arianto Lumajang
 on:
   workflow_dispatch:
     inputs:
+
       tailscale_authkey:
-        description: "Masukkan Tailscale Auth Key"
+        description: "Tailscale Auth Key"
         required: true
         type: string
 
+      rdp_password:
+        description: "Password RDP"
+        required: true
+        type: string
+
+      session_hours:
+        description: "Durasi sesi (jam)"
+        required: true
+        default: "6"
+        type: string
+
+
 jobs:
   windows-rdp:
+
     runs-on: windows-latest
 
     steps:
 
-      - name: Info Pemilik VPS (Arianto Lumajang)
+      # ==========================================================
+      # INFO MESIN
+      # ==========================================================
+
+      - name: Info Pemilik VPS - Arianto Lumajang
+        shell: pwsh
         run: |
-          Write-Host "=========================================="
-          Write-Host "  VPS RDP MILIK: Arianto Lumajang"
-          Write-Host "  LOKASI: Lumajang, Indonesia"
-          Write-Host "=========================================="
 
-          Write-Host "=== SPESIFIKASI MESIN ==="
+          Write-Host ""
+          Write-Host "=================================================="
+          Write-Host "        VPS RDP ARIANTO LUMAJANG"
+          Write-Host "        LUMAJANG - INDONESIA"
+          Write-Host "=================================================="
+          Write-Host ""
 
-          Get-CimInstance Win32_ComputerSystem |
-            Select-Object TotalPhysicalMemory
+          Write-Host "=== INFORMASI WINDOWS ==="
+
+          Get-CimInstance Win32_OperatingSystem |
+            Select-Object Caption, Version, OSArchitecture
+
+          Write-Host ""
+          Write-Host "=== CPU ==="
 
           Get-CimInstance Win32_Processor |
-            Select-Object Name
+            Select-Object Name, NumberOfCores, NumberOfLogicalProcessors
+
+          Write-Host ""
+          Write-Host "=== RAM ==="
+
+          $RAM = Get-CimInstance Win32_ComputerSystem
+
+          Write-Host ("RAM : {0:N2} GB" -f ($RAM.TotalPhysicalMemory / 1GB))
+
+          Write-Host ""
+          Write-Host "=================================================="
 
 
-      - name: Install & Setup Tailscale Service
+      # ==========================================================
+      # MASK CREDENTIAL
+      # ==========================================================
+
+      - name: Amankan Credential
+        shell: pwsh
         env:
-          TAILSCALE_AUTHKEY: ${{ inputs.tailscale_authkey }}
+          TS_AUTHKEY: ${{ inputs.tailscale_authkey }}
+          RDP_PASSWORD: ${{ inputs.rdp_password }}
         run: |
-          Write-Host "Menginstal Tailscale..."
 
-          winget install --id Tailscale.Tailscale -e `
+          Write-Host "::add-mask::$env:TS_AUTHKEY"
+          Write-Host "::add-mask::$env:RDP_PASSWORD"
+
+          Write-Host "Credential berhasil diamankan dari log."
+
+
+      # ==========================================================
+      # INSTALL TAILSCALE
+      # ==========================================================
+
+      - name: Install Tailscale
+        shell: pwsh
+        run: |
+
+          Write-Host ""
+          Write-Host "=================================================="
+          Write-Host "             INSTALL TAILSCALE"
+          Write-Host "=================================================="
+
+          winget install `
+            --id Tailscale.Tailscale `
+            -e `
             --accept-source-agreements `
             --accept-package-agreements
 
-          Write-Host "Menyalakan Tailscale sebagai Service..."
+          Write-Host "Tailscale berhasil diinstall."
 
-          Start-Service Tailscale
 
-          Write-Host "Menghubungkan ke Tailscale..."
+      # ==========================================================
+      # START TAILSCALE
+      # ==========================================================
 
-          & "C:\Program Files\Tailscale\tailscale.exe" up `
-            --authkey="$env:TAILSCALE_AUTHKEY" `
+      - name: Connect Tailscale
+        shell: pwsh
+        env:
+          TS_AUTHKEY: ${{ inputs.tailscale_authkey }}
+        run: |
+
+          Write-Host ""
+          Write-Host "Mengaktifkan service Tailscale..."
+
+          $TailscaleExe = "C:\Program Files\Tailscale\tailscale.exe"
+
+          if (-not (Test-Path $TailscaleExe)) {
+
+            Write-Host "Tailscale executable tidak ditemukan."
+            exit 1
+
+          }
+
+          Start-Service Tailscale -ErrorAction SilentlyContinue
+
+          Start-Sleep -Seconds 3
+
+          Write-Host "Menghubungkan ke jaringan Tailscale..."
+
+          & $TailscaleExe up `
+            --authkey="$env:TS_AUTHKEY" `
             --accept-routes `
             --unattended
 
+          if ($LASTEXITCODE -ne 0) {
 
-      - name: Konfigurasi RDP
+            Write-Host "Tailscale gagal terhubung."
+            exit 1
+
+          }
+
+          Write-Host "Tailscale berhasil terhubung."
+
+
+      # ==========================================================
+      # KONFIGURASI RDP
+      # ==========================================================
+
+      - name: Konfigurasi Remote Desktop
+        shell: pwsh
+        env:
+          RDP_PASSWORD: ${{ inputs.rdp_password }}
         run: |
+
+          Write-Host ""
+          Write-Host "=================================================="
+          Write-Host "           KONFIGURASI REMOTE DESKTOP"
+          Write-Host "=================================================="
+
+          $Username = "runneradmin"
+          $Password = $env:RDP_PASSWORD
+
+          # ------------------------------------------------------
+          # Validasi password
+          # ------------------------------------------------------
+
+          if ([string]::IsNullOrWhiteSpace($Password)) {
+
+            Write-Host "Password RDP kosong."
+            exit 1
+
+          }
+
+          # ------------------------------------------------------
+          # Buat SecureString
+          # ------------------------------------------------------
+
+          $SecurePassword = ConvertTo-SecureString `
+            $Password `
+            -AsPlainText `
+            -Force
+
+          # ------------------------------------------------------
+          # Cek user
+          # ------------------------------------------------------
+
+          $UserExists = Get-LocalUser `
+            -Name $Username `
+            -ErrorAction SilentlyContinue
+
+          if ($null -ne $UserExists) {
+
+            Write-Host "User runneradmin sudah ada."
+            Write-Host "Mengubah password user..."
+
+            Set-LocalUser `
+              -Name $Username `
+              -Password $SecurePassword
+
+          }
+          else {
+
+            Write-Host "Membuat user runneradmin..."
+
+            New-LocalUser `
+              -Name $Username `
+              -Password $SecurePassword `
+              -FullName "Arianto Lumajang" `
+              -Description "RDP Arianto Lumajang" `
+              -PasswordNeverExpires:$true
+
+          }
+
+          # ------------------------------------------------------
+          # Pastikan user aktif
+          # ------------------------------------------------------
+
+          Enable-LocalUser `
+            -Name $Username `
+            -ErrorAction SilentlyContinue
+
+          # ------------------------------------------------------
+          # Tambahkan Administrators
+          # ------------------------------------------------------
+
+          Write-Host "Memeriksa group Administrators..."
+
+          $AdminMembers = Get-LocalGroupMember `
+            -Group "Administrators" `
+            -ErrorAction SilentlyContinue
+
+          $AlreadyAdmin = $AdminMembers |
+            Where-Object {
+              $_.Name -match "\\$Username$"
+            }
+
+          if ($null -eq $AlreadyAdmin) {
+
+            Add-LocalGroupMember `
+              -Group "Administrators" `
+              -Member $Username
+
+            Write-Host "runneradmin ditambahkan ke Administrators."
+
+          }
+          else {
+
+            Write-Host "runneradmin sudah menjadi Administrator."
+
+          }
+
+          # ------------------------------------------------------
+          # Aktifkan RDP
+          # ------------------------------------------------------
+
           Write-Host "Mengaktifkan Remote Desktop..."
 
-          net user runneradmin "AriantoLumajang123!@" /add
-
-          net localgroup Administrators runneradmin /add
-
           Set-ItemProperty `
-            -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' `
+            -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server" `
             -Name "fDenyTSConnections" `
             -Value 0
 
-          Enable-NetFirewallRule `
-            -DisplayGroup "Remote Desktop"
+          # ------------------------------------------------------
+          # Network Level Authentication
+          # ------------------------------------------------------
 
           Set-ItemProperty `
-            -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' `
+            -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp" `
             -Name "UserAuthentication" `
             -Value 1
 
+          # ------------------------------------------------------
+          # Firewall
+          # ------------------------------------------------------
+
+          Write-Host "Mengaktifkan Firewall Remote Desktop..."
+
+          Enable-NetFirewallRule `
+            -DisplayGroup "Remote Desktop" `
+            -ErrorAction SilentlyContinue
+
+          Write-Host ""
           Write-Host "RDP berhasil dikonfigurasi."
 
 
-      - name: Optimalkan Windows
-        run: |
-          Write-Host "=========================================="
-          Write-Host "      OPTIMASI WINDOWS DIMULAI"
-          Write-Host "=========================================="
+      # ==========================================================
+      # OPTIMASI WINDOWS
+      # ==========================================================
 
-          # Power plan performa tinggi
+      - name: Optimalkan Windows
+        shell: pwsh
+        run: |
+
+          Write-Host ""
+          Write-Host "=================================================="
+          Write-Host "           OPTIMASI WINDOWS"
+          Write-Host "=================================================="
+
+          # ------------------------------------------------------
+          # High Performance
+          # ------------------------------------------------------
+
           Write-Host "Mengatur Power Plan..."
 
           powercfg /setactive SCHEME_MIN
 
-          # Mengurangi timeout monitor dan sleep
+          # ------------------------------------------------------
+          # Nonaktifkan Sleep
+          # ------------------------------------------------------
+
           Write-Host "Menonaktifkan Sleep..."
 
           powercfg /change monitor-timeout-ac 0
           powercfg /change standby-timeout-ac 0
           powercfg /change hibernate-timeout-ac 0
 
-          # Membersihkan TEMP
-          Write-Host "Membersihkan file TEMP..."
+          # ------------------------------------------------------
+          # TCP Optimization
+          # ------------------------------------------------------
 
-          Remove-Item "$env:TEMP\*" -Recurse -Force -ErrorAction SilentlyContinue
-          Remove-Item "C:\Windows\Temp\*" -Recurse -Force -ErrorAction SilentlyContinue
-
-          # Membersihkan recycle bin
-          Write-Host "Membersihkan Recycle Bin..."
-
-          Clear-RecycleBin -Force -ErrorAction SilentlyContinue
-
-          # Mengurangi aplikasi background
-          Write-Host "Mengoptimalkan Background Apps..."
-
-          New-Item `
-            -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy" `
-            -Force | Out-Null
-
-          Set-ItemProperty `
-            -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy" `
-            -Name "LetAppsRunInBackground" `
-            -Type DWord `
-            -Value 2 `
-            -ErrorAction SilentlyContinue
-
-          # Optimasi TCP
-          Write-Host "Mengoptimalkan Network TCP..."
+          Write-Host "Mengoptimalkan TCP..."
 
           netsh int tcp set global autotuninglevel=normal
           netsh int tcp set global rss=enabled
 
-          # Mengaktifkan system responsiveness untuk RDP
-          Write-Host "Mengoptimalkan RDP..."
+          # ------------------------------------------------------
+          # Bersihkan TEMP
+          # ------------------------------------------------------
 
-          New-Item `
-            -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services" `
-            -Force | Out-Null
+          Write-Host "Membersihkan TEMP..."
 
-          Set-ItemProperty `
-            -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services" `
-            -Name "fDisableAudioCapture" `
-            -Type DWord `
-            -Value 1 `
+          Remove-Item `
+            "$env:TEMP\*" `
+            -Recurse `
+            -Force `
             -ErrorAction SilentlyContinue
 
-          # Matikan layanan yang biasanya tidak diperlukan
-          Write-Host "Mengurangi service yang tidak diperlukan..."
+          Remove-Item `
+            "C:\Windows\Temp\*" `
+            -Recurse `
+            -Force `
+            -ErrorAction SilentlyContinue
 
-          $services = @(
+          # ------------------------------------------------------
+          # Recycle Bin
+          # ------------------------------------------------------
+
+          Write-Host "Membersihkan Recycle Bin..."
+
+          Clear-RecycleBin `
+            -Force `
+            -ErrorAction SilentlyContinue
+
+          # ------------------------------------------------------
+          # Kurangi beberapa service diagnostik
+          # ------------------------------------------------------
+
+          Write-Host "Mengoptimalkan service..."
+
+          $Services = @(
             "DiagTrack",
             "MapsBroker"
           )
 
-          foreach ($service in $services) {
-            $svc = Get-Service $service -ErrorAction SilentlyContinue
+          foreach ($ServiceName in $Services) {
 
-            if ($svc) {
-              Stop-Service $service -Force -ErrorAction SilentlyContinue
-              Set-Service $service -StartupType Disabled -ErrorAction SilentlyContinue
+            $Service = Get-Service `
+              -Name $ServiceName `
+              -ErrorAction SilentlyContinue
+
+            if ($null -ne $Service) {
+
+              Stop-Service `
+                -Name $ServiceName `
+                -Force `
+                -ErrorAction SilentlyContinue
+
+              Set-Service `
+                -Name $ServiceName `
+                -StartupType Disabled `
+                -ErrorAction SilentlyContinue
+
             }
+
           }
 
-          Write-Host "=========================================="
-          Write-Host "      OPTIMASI WINDOWS SELESAI"
-          Write-Host "=========================================="
+          Write-Host ""
+          Write-Host "Optimasi Windows selesai."
 
 
-      - name: Informasi RDP
+      # ==========================================================
+      # CEK TAILSCALE
+      # ==========================================================
+
+      - name: Tampilkan Informasi Tailscale
+        shell: pwsh
         run: |
-          Write-Host "=========================================="
-          Write-Host "       RDP ARIANTO LUMAJANG SIAP"
-          Write-Host "=========================================="
 
           Write-Host ""
-          Write-Host "IP Tailscale:"
+          Write-Host "=================================================="
+          Write-Host "             TAILSCALE STATUS"
+          Write-Host "=================================================="
 
-          & "C:\Program Files\Tailscale\tailscale.exe" ip -4
+          $TailscaleExe = "C:\Program Files\Tailscale\tailscale.exe"
 
           Write-Host ""
+          Write-Host "Status:"
+          & $TailscaleExe status
+
+          Write-Host ""
+          Write-Host "=================================================="
+          Write-Host "              IP TAILSCALE"
+          Write-Host "=================================================="
+
+          $IP = & $TailscaleExe ip -4
+
+          Write-Host ""
+          Write-Host "IP RDP:"
+          Write-Host $IP
+
+          Write-Host ""
+          Write-Host "=================================================="
+          Write-Host "              LOGIN RDP"
+          Write-Host "=================================================="
+
+          Write-Host ""
+          Write-Host "Computer : $IP"
           Write-Host "Username : runneradmin"
-          Write-Host "Password : AriantoLumajang123!@"
-
+          Write-Host "Password : ********"
           Write-Host ""
-          Write-Host "=========================================="
-          Write-Host "      WINDOWS SUDAH DIAKTIFKAN"
-          Write-Host "=========================================="
 
+          Write-Host "=================================================="
+
+
+      # ==========================================================
+      # KEEP ALIVE
+      # ==========================================================
 
       - name: Keep Alive
+        shell: pwsh
+        env:
+          SESSION_HOURS: ${{ inputs.session_hours }}
         run: |
-          Write-Host "RDP Arianto Lumajang tetap aktif."
-          Write-Host "Sesi akan berjalan selama runner GitHub tersedia."
 
-          while ($true) {
-            Start-Sleep -Seconds 300
+          $Hours = 0
+
+          if (-not [double]::TryParse(
+            $env:SESSION_HOURS,
+            [ref]$Hours
+          )) {
+
+            $Hours = 6
+
           }
+
+          if ($Hours -le 0) {
+            $Hours = 6
+          }
+
+          $TotalSeconds = [int]($Hours * 3600)
+
+          Write-Host ""
+          Write-Host "=================================================="
+          Write-Host "          ARIANTO RDP PRO"
+          Write-Host "=================================================="
+          Write-Host ""
+          Write-Host "       A           A"
+          Write-Host "      / \_________/ \"
+          Write-Host "     (     o   o     )"
+          Write-Host "      \    \ V /    /"
+          Write-Host "       \____\_/____/"
+          Write-Host ""
+          Write-Host "          ARIANTO RDP PRO"
+          Write-Host ""
+          Write-Host "     L U M A J A N G"
+          Write-Host "       C A N D I P U R O"
+          Write-Host ""
+          Write-Host "=================================================="
+          Write-Host "Durasi sesi : $Hours jam"
+          Write-Host "Status      : AKTIF"
+          Write-Host "=================================================="
+
+          $StartTime = Get-Date
+          $EndTime = $StartTime.AddSeconds($TotalSeconds)
+
+          while ((Get-Date) -lt $EndTime) {
+
+            $Remaining = $EndTime - (Get-Date)
+
+            Write-Host (
+              "RDP aktif | Sisa waktu: {0:hh\:mm\:ss}" -f $Remaining
+            )
+
+            Start-Sleep -Seconds 300
+
+          }
+
+          Write-Host ""
+          Write-Host "=================================================="
+          Write-Host "       SESI RDP TELAH SELESAI"
+          Write-Host "=================================================="
