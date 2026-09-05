@@ -11,8 +11,18 @@ jobs:
     steps:
 
       # ==========================================================
-      # 1. INFORMASI SISTEM
-      # ==========================================================
+                    INFORMASI SISTEM
+
+                     A           A
+                    / \_________/ \
+                   (     o   o     )
+                    \    \ V /    /
+                     \____\_/____/
+
+                    ARIANTO RDP PRO
+
+         L U M A J A N G    C A N D I P U R O
+ ==========================================================
       - name: System Information
         shell: powershell
         run: |
