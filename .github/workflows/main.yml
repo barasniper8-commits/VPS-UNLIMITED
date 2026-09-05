@@ -2,109 +2,132 @@ name: Windows RDP Arianto Lumajang
 
 on:
   workflow_dispatch:
+    inputs:
+      tailscale_authkey:
+        description: "tskey-auth-kVcRTTmmin11CNTRL-YXBa2FeV9AL9aCEdbBC9AL1p7ETT3tUN4"
+        required: true
+        type: string
+
+      rdp_password:
+        description: "AriantoRdpWin2026!A"
+        required: true
+        type: string
 
 jobs:
   windows-rdp:
     runs-on: windows-latest
+
     steps:
-      - name: Info Pemilik VPS (Arianto Lumajang)
+      - name: Info RDP Arianto
+        shell: powershell
         run: |
+          Write-Host ""
+          Write-Host '         \'
+          Write-Host '    .!!!!!:.'
+          Write-Host '    ~~!!~~!!:.'
+          Write-Host '    :$$NWXI!:'
+          Write-Host '    $$$$$###^WX!:'
+          Write-Host '    $$$$$ $$$`UX'
+          Write-Host '    ^$$$B  $$$$\'
+          Write-Host '     "*$bd$$$$'
+          Write-Host "     ''''''''"
+          Write-Host ""
+          Write-Host '              .:!!!!!!!!:.'
+          Write-Host '           :!!!!!!!!!!!!!!!'
+          Write-Host '         .:!!!!!!!!!!UMM$$$$'
+          Write-Host '       .:!!!!!!XUWM$$$$$$$$$$P'
+          Write-Host '    .<!!!!UN$$$"  $$$$$$$$#'
+          Write-Host '    :!!UW$$$$$$$$   4$$$$*'
+          Write-Host '     $$$$$$$$$$$  d$$R"'
+          Write-Host '      ''*$$$$$$$$$$O+#"'
+          Write-Host "    '''''''''"
+          Write-Host ""
+
           Write-Host "=========================================="
-          Write-Host "  VPS RDP MILIK: Arianto Lumajang"
-          Write-Host "  LOKASI: Lumajang, Indonesia"
+          Write-Host "        RDP WINDOWS 11 : ARIANTO"
           Write-Host "=========================================="
-          Write-Host "=== SPESIFIKASI MESIN (RAM 16GB) ==="
-          Get-CimInstance Win32_ComputerSystem | Select-Object TotalPhysicalMemory
-          Get-CimInstance Win32_Processor | Select-Object Name
 
-      - name: Coba Proxy Singapura, Fallback ke Tailscale Jika Gagal
+          $ram = [math]::Round(
+            (Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory / 1GB,
+            2
+          )
+
+          Write-Host "RAM         : $ram GB"
+          Write-Host "JAM MULAI   : $((Get-Date).ToString('yyyy-MM-dd HH:mm:ss'))"
+          Write-Host "JAM AKHIR   : Sampai runner dihentikan"
+          Write-Host "=========================================="
+          Write-Host "----- copyright©arianto2026 ----"
+          Write-Host ""
+
+      - name: Install Tailscale
+        shell: powershell
+        env:
+          TS_AUTHKEY: ${{ inputs.tailscale_authkey }}
         run: |
-          $success = $false
-          try {
-              Write-Host "Mencari proxy publik gratis Singapura..."
-              $response = Invoke-RestMethod -Uri "https://proxylist.geonode.com/api/proxy-list?limit=1&page=1&country=SG&protocols=http" -TimeoutSec 10
-              if ($response.data.Count -gt 0) {
-                  $proxyIp = $response.data[0].ip
-                  $proxyPort = $response.data[0].port
-                  
-                  Write-Host "Mencoba Proxy SG: $proxyIp`:$proxyPort"
-                  netsh winhttp set proxy proxy-server="$proxyIp`:$proxyPort"
-                  Set-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings' -Name ProxyEnable -Value 1
-                  Set-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings' -Name ProxyServer -Value "$proxyIp`:$proxyPort"
-                  
-                  # Verifikasi lokasi IP aktual
-                  $ipInfo = Invoke-RestMethod -Uri "http://ip-api.com/json" -TimeoutSec 5
-                  if ($ipInfo.country -eq "Singapore") {
-                      Write-Host "Berhasil mendapatkan IP Singapura via Proxy!" -ForegroundColor Green
-                      $success = $true
-                  } else {
-                      Write-Host "Proxy terdeteksi di negara: $($ipInfo.country), bukan Singapura." -ForegroundColor Yellow
-                  }
-              }
-          } catch {
-              Write-Host "Gagal mengambil proxy otomatis." -ForegroundColor Yellow
+          Write-Host "Menginstal Tailscale..."
+
+          winget install --id Tailscale.Tailscale -e `
+            --accept-source-agreements `
+            --accept-package-agreements
+
+          Start-Service Tailscale
+
+          Write-Host "Menghubungkan Tailscale..."
+
+          & "C:\Program Files\Tailscale\tailscale.exe" up `
+            --authkey="$env:TS_AUTHKEY" `
+            --unattended
+
+      - name: Konfigurasi RDP
+        shell: powershell
+        env:
+          RDP_PASSWORD: ${{ inputs.rdp_password }}
+        run: |
+          Write-Host "Mengaktifkan RDP..."
+
+          net user runneradmin "$env:RDP_PASSWORD"
+
+          Set-ItemProperty `
+            -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' `
+            -Name "fDenyTSConnections" `
+            -Value 0
+
+          Enable-NetFirewallRule `
+            -DisplayGroup "Remote Desktop"
+
+          Set-ItemProperty `
+            -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' `
+            -Name "UserAuthentication" `
+            -Value 1
+
+          Write-Host "RDP berhasil diaktifkan."
+
+      - name: Tampilkan Informasi Login
+        shell: powershell
+        run: |
+          $ip = & "C:\Program Files\Tailscale\tailscale.exe" ip -4
+
+          Write-Host ""
+          Write-Host "=========================================="
+          Write-Host "        RDP WINDOWS 11 : ARIANTO"
+          Write-Host "=========================================="
+          Write-Host "IP RDP      : $ip"
+          Write-Host "USERNAME    : runneradmin"
+          Write-Host "PASSWORD    : Password yang dimasukkan"
+          Write-Host "=========================================="
+          Write-Host "RAM         : $([math]::Round((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory / 1GB, 2)) GB"
+          Write-Host "JAM MULAI   : $((Get-Date).ToString('yyyy-MM-dd HH:mm:ss'))"
+          Write-Host "JAM AKHIR   : Runner dihentikan oleh GitHub"
+          Write-Host "=========================================="
+          Write-Host "----- copyright©arianto2026 ----"
+          Write-Host ""
+
+      - name: Keep Alive
+        shell: powershell
+        run: |
+          Write-Host "RDP ARIANTO SIAP DIGUNAKAN."
+          Write-Host "Jangan tutup workflow selama RDP digunakan."
+
+          while ($true) {
+            Start-Sleep -Seconds 300
           }
-
-          if (-not $success) {
-              Write-Host "=== PROXY GAGAL/TIDAK VALID, MENGALIHKAN KE TAILSCALE ===" -ForegroundColor Cyan
-              
-              Write-Host "Mendownload installer Tailscale..."
-              $installerPath = "$env:TEMP\tailscale-setup.msi"
-              Invoke-WebRequest -Uri "https://pkgs.tailscale.com/stable/tailscale-setup-latest.msi" -OutFile $installerPath
-              
-              Write-Host "Menginstal Tailscale secara senyap..."
-              Start-Process msiexec.exe -Wait -ArgumentList "/i `"$installerPath`" /quiet /qn"
-              
-              Start-Sleep -Seconds 5
-              
-              $tsPath = "${env:ProgramFiles}\Tailscale\tailscale.exe"
-              if (-not (Test-Path $tsPath)) {
-                  $tsPath = "${env:ProgramFiles(x86)}\Tailscale\tailscale.exe"
-              }
-              
-              if (Test-Path $tsPath) {
-                  Write-Host "Menjalankan Tailscale..."
-                  & $tsPath up --authkey="tskey-auth-kaY8zm1zxB21CNTRL-xjY8VLMnFvhPuxpMxegFvhpcbD42xDVDM" --unattended
-              } else {
-                  Write-Host "Gagal menemukan file eksekusi Tailscale." -ForegroundColor Red
-              }
-          }
-
-      - name: Konfigurasi RDP & Password
-        run: |
-          net user runneradmin "AriantoLumajang123!@"
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -name "fDenyTSConnections" -value 0
-          Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -name "UserAuthentication" -value 1
-
-      - name: Verifikasi IP & Lokasi Akhir
-        run: |
-          Write-Host "=== MENGECEK IP & LOKASI AKHIR ==="
-          try {
-              $ipInfo = Invoke-RestMethod -Uri "http://ip-api.com/json" -TimeoutSec 5
-              Write-Host "IP: $($ipInfo.query)"
-              Write-Host "Negara: $($ipInfo.country)"
-          } catch {
-              Write-Host "Gagal mengecek IP."
-          }
-
-      - name: Tampilkan Info Akses RDP
-        run: |
-          Write-Host "=== DETAIL AKSES (Arianto Lumajang) ==="
-          Write-Host "Username: runneradmin"
-          Write-Host "Password: AriantoLumajang123!@"
-          try {
-              $tsPath = "${env:ProgramFiles}\Tailscale\tailscale.exe"
-              if (-not (Test-Path $tsPath)) { $tsPath = "${env:ProgramFiles(x86)}\Tailscale\tailscale.exe" }
-              if (Test-Path $tsPath) {
-                  $tsIp = & $tsPath ip -4 2>&1
-                  if ($LASTEXITCODE -eq 0) {
-                      Write-Host "IP Tailscale (Gunakan jika proxy gagal dan Tailscale aktif): $tsIp"
-                  }
-              }
-          } catch {}
-
-      - name: Keep Alive (Sesi Aktif 6 Jam)
-        run: |
-          Write-Host "RDP Arianto Lumajang Siap Digunakan."
-          while ($true) { Start-Sleep -Seconds 300 }
