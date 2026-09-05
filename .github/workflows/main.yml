@@ -4,12 +4,12 @@ on:
   workflow_dispatch:
     inputs:
       tailscale_authkey:
-        description: "tskey-auth-kVcRTTmmin11CNTRL-YXBa2FeV9AL9aCEdbBC9AL1p7ETT3tUN4"
+        description: "Masukkan Tailscale Auth Key"
         required: true
         type: string
 
       rdp_password:
-        description: "AriantoRdpWin2026!A"
+        description: "Masukkan Password RDP"
         required: true
         type: string
 
