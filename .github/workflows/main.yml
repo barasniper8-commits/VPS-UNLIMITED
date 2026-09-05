@@ -32,16 +32,28 @@ jobs:
       - name: Arianto RDP Banner
         shell: powershell
         run: |
-          Write-Host ""
-          Write-Host '              .:!!!!!!!!:.'
-          Write-Host '           :!!!!!!!!!!!!!!!'
-          Write-Host '         .:!!!!!!!!!!UMM$$$$'
-          Write-Host '       .:!!!!!!XUWM$$$$$$$$$$P'
-          Write-Host '    .<!!!!UN$$$""  $$$$$$$$#'
-          Write-Host '    :!!UW$$$$$$$$   4$$$$*'
-          Write-Host '     $$$$$$$$$$$  d$$R"'
-          Write-Host '      '*$$$$$$$$$$O+#"'
-          Write-Host '    ''''''''''
+          $banner = @'
+                   \`
+              .!!!!!:.
+              ~~!!~~!!:.
+              :$$NWXI!:
+              $$$$$###^WX!:
+              $$$$$ $$$`UX
+              ^$$$B  $$$$\
+               "*$bd$$$$
+               ''''''''
+
+                        .:!!!!!!!!:.
+                     :!!!!!!!!!!!!!!!
+                   .:!!!!!!!!!!UMM$$$$
+                 .:!!!!!!XUWM$$$$$$$$$$P
+              .<!!!!UN$$$"  $$$$$$$$#
+              :!!UW$$$$$$$$   4$$$$*
+               $$$$$$$$$$$  d$$R"
+                '*$$$$$$$$$$O+#"
+              '''''''''
+          '@
+          Write-Host $banner
           Write-Host ""
           Write-Host "=================================================="
           Write-Host "              RDP WINDOWS 11"
@@ -91,7 +103,6 @@ jobs:
             --accept-source-agreements `
             --accept-package-agreements
 
-          # Memperbarui environment path agar file binary Tailscale langsung terdeteksi
           $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
 
           Write-Host "Tailscale selesai diinstal."
@@ -142,7 +153,6 @@ jobs:
 
           Write-Host "Mengaktifkan Remote Desktop..."
 
-          # Mengatur password untuk user runneradmin yang sudah ada di GitHub Actions runner
           $userExists = Get-LocalUser `
             -Name "runneradmin" `
             -ErrorAction SilentlyContinue
@@ -176,25 +186,21 @@ jobs:
                 -Password $securePassword
           }
 
-          # Tambahkan ke Remote Desktop Users
           Add-LocalGroupMember `
             -Group "Remote Desktop Users" `
             -Member "runneradmin" `
             -ErrorAction SilentlyContinue
 
-          # Aktifkan RDP
           Set-ItemProperty `
             -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server" `
             -Name "fDenyTSConnections" `
             -Value 0
 
-          # NLA tetap aktif
           Set-ItemProperty `
             -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp" `
             -Name "UserAuthentication" `
             -Value 1
 
-          # Firewall RDP
           Enable-NetFirewallRule `
             -DisplayGroup "Remote Desktop"
 
