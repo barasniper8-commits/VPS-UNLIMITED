@@ -47,19 +47,23 @@ jobs:
 
           if (-not $success) {
               Write-Host "=== PROXY GAGAL/TIDAK VALID, MENGALIHKAN KE TAILSCALE ===" -ForegroundColor Cyan
-              winget install --id Tailscale.Tailscale -e --accept-source-agreements --accept-package-agreements --silent
               
-              Write-Host "Menunggu instalasi Tailscale selesai..."
-              Start-Sleep -Seconds 15
+              Write-Host "Mendownload installer Tailscale..."
+              $installerPath = "$env:TEMP\tailscale-setup.msi"
+              Invoke-WebRequest -Uri "https://pkgs.tailscale.com/stable/tailscale-setup-latest.msi" -OutFile $installerPath
               
-              # Deteksi otomatis jalur direktori Tailscale (ProgramFiles atau ProgramFiles(x86))
+              Write-Host "Menginstal Tailscale secara senyap..."
+              Start-Process msiexec.exe -Wait -ArgumentList "/i `"$installerPath`" /quiet /qn"
+              
+              Start-Sleep -Seconds 5
+              
               $tsPath = "${env:ProgramFiles}\Tailscale\tailscale.exe"
               if (-not (Test-Path $tsPath)) {
                   $tsPath = "${env:ProgramFiles(x86)}\Tailscale\tailscale.exe"
               }
               
               if (Test-Path $tsPath) {
-                  Write-Host "Menjalankan Tailscale dari: $tsPath"
+                  Write-Host "Menjalankan Tailscale..."
                   & $tsPath up --authkey="tskey-auth-kaY8zm1zxB21CNTRL-xjY8VLMnFvhPuxpMxegFvhpcbD42xDVDM" --unattended
               } else {
                   Write-Host "Gagal menemukan file eksekusi Tailscale." -ForegroundColor Red
