@@ -21,27 +21,18 @@ jobs:
       - name: Info RDP Arianto
         shell: powershell
         run: |
-          Write-Host ""
-          Write-Host '         \'
-          Write-Host '    .!!!!!:.'
-          Write-Host '    ~~!!~~!!:.'
-          Write-Host '    :$$NWXI!:'
-          Write-Host '    $$$$$###^WX!:'
-          Write-Host '    $$$$$ $$$`UX'
-          Write-Host '    ^$$$B  $$$$\'
-          Write-Host '     "*$bd$$$$'
-          Write-Host "     ''''''''"
-          Write-Host ""
-          Write-Host '              .:!!!!!!!!:.'
-          Write-Host '           :!!!!!!!!!!!!!!!'
-          Write-Host '         .:!!!!!!!!!!UMM$$$$'
-          Write-Host '       .:!!!!!!XUWM$$$$$$$$$$P'
-          Write-Host '    .<!!!!UN$$$"  $$$$$$$$#'
-          Write-Host '    :!!UW$$$$$$$$   4$$$$*'
-          Write-Host '     $$$$$$$$$$$  d$$R"'
-          Write-Host '      ''*$$$$$$$$$$O+#"'
-          Write-Host "    '''''''''"
-          Write-Host ""
+Write-Host ""
+Write-Host ' \'                      .:!!!!!!!!:.'
+Write-Host '.!!!!!:.'              :!!!!!!!!!!!!!!!'
+Write-Host '~~!!~~!!:.'         .:!!!!!!!!!!UMM$$$$'
+Write-Host ':$$NWXI!:'       .:!!!!!!XUW^$$$$$$$$$$P'
+Write-Host '$$$$$^$$WX!:' .<!!!!UN$$$"   $$$$$$$$#'
+Write-Host '$$$$   $$$`UX':!!UW$$$$$$$   4$$$$*'
+Write-Host '  ^$$$ $$$$\'   $$$$$$$$$$$ d$$R"'
+Write-Host '    "*$bd$$$$' '*$$$$$$$$$$O+#"'
+Write-Host "   ''''''''"      '''''''''"
+Write-Host ""
+          
 
           Write-Host "=========================================="
           Write-Host "        RDP WINDOWS 11 : ARIANTO"
