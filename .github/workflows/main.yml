@@ -13,18 +13,22 @@ jobs:
     runs-on: windows-latest
 
     steps:
+
       - name: Info Pemilik VPS (Arianto Lumajang)
         run: |
           Write-Host "=========================================="
           Write-Host "  VPS RDP MILIK: Arianto Lumajang"
           Write-Host "  LOKASI: Lumajang, Indonesia"
           Write-Host "=========================================="
+
           Write-Host "=== SPESIFIKASI MESIN ==="
+
           Get-CimInstance Win32_ComputerSystem |
             Select-Object TotalPhysicalMemory
 
           Get-CimInstance Win32_Processor |
             Select-Object Name
+
 
       - name: Install & Setup Tailscale Service
         env:
@@ -36,7 +40,8 @@ jobs:
             --accept-source-agreements `
             --accept-package-agreements
 
-          Write-Host "Menyalakan Tailscale sebagai Service sistem..."
+          Write-Host "Menyalakan Tailscale sebagai Service..."
+
           Start-Service Tailscale
 
           Write-Host "Menghubungkan ke Tailscale..."
@@ -46,11 +51,14 @@ jobs:
             --accept-routes `
             --unattended
 
+
       - name: Konfigurasi RDP
         run: |
-          Write-Host "Mengaktifkan RDP..."
+          Write-Host "Mengaktifkan Remote Desktop..."
 
-          net user runneradmin "AriantoLumajang123!@"
+          net user runneradmin "AriantoLumajang123!@" /add
+
+          net localgroup Administrators runneradmin /add
 
           Set-ItemProperty `
             -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' `
@@ -65,21 +73,120 @@ jobs:
             -Name "UserAuthentication" `
             -Value 1
 
-      - name: Tampilkan IP Tailscale
+          Write-Host "RDP berhasil dikonfigurasi."
+
+
+      - name: Optimalkan Windows
         run: |
           Write-Host "=========================================="
-          Write-Host "   RDP ARIANTO LUMAJANG SIAP"
+          Write-Host "      OPTIMASI WINDOWS DIMULAI"
           Write-Host "=========================================="
+
+          # Power plan performa tinggi
+          Write-Host "Mengatur Power Plan..."
+
+          powercfg /setactive SCHEME_MIN
+
+          # Mengurangi timeout monitor dan sleep
+          Write-Host "Menonaktifkan Sleep..."
+
+          powercfg /change monitor-timeout-ac 0
+          powercfg /change standby-timeout-ac 0
+          powercfg /change hibernate-timeout-ac 0
+
+          # Membersihkan TEMP
+          Write-Host "Membersihkan file TEMP..."
+
+          Remove-Item "$env:TEMP\*" -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item "C:\Windows\Temp\*" -Recurse -Force -ErrorAction SilentlyContinue
+
+          # Membersihkan recycle bin
+          Write-Host "Membersihkan Recycle Bin..."
+
+          Clear-RecycleBin -Force -ErrorAction SilentlyContinue
+
+          # Mengurangi aplikasi background
+          Write-Host "Mengoptimalkan Background Apps..."
+
+          New-Item `
+            -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy" `
+            -Force | Out-Null
+
+          Set-ItemProperty `
+            -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy" `
+            -Name "LetAppsRunInBackground" `
+            -Type DWord `
+            -Value 2 `
+            -ErrorAction SilentlyContinue
+
+          # Optimasi TCP
+          Write-Host "Mengoptimalkan Network TCP..."
+
+          netsh int tcp set global autotuninglevel=normal
+          netsh int tcp set global rss=enabled
+
+          # Mengaktifkan system responsiveness untuk RDP
+          Write-Host "Mengoptimalkan RDP..."
+
+          New-Item `
+            -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services" `
+            -Force | Out-Null
+
+          Set-ItemProperty `
+            -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services" `
+            -Name "fDisableAudioCapture" `
+            -Type DWord `
+            -Value 1 `
+            -ErrorAction SilentlyContinue
+
+          # Matikan layanan yang biasanya tidak diperlukan
+          Write-Host "Mengurangi service yang tidak diperlukan..."
+
+          $services = @(
+            "DiagTrack",
+            "MapsBroker"
+          )
+
+          foreach ($service in $services) {
+            $svc = Get-Service $service -ErrorAction SilentlyContinue
+
+            if ($svc) {
+              Stop-Service $service -Force -ErrorAction SilentlyContinue
+              Set-Service $service -StartupType Disabled -ErrorAction SilentlyContinue
+            }
+          }
+
+          Write-Host "=========================================="
+          Write-Host "      OPTIMASI WINDOWS SELESAI"
+          Write-Host "=========================================="
+
+
+      - name: Informasi RDP
+        run: |
+          Write-Host "=========================================="
+          Write-Host "       RDP ARIANTO LUMAJANG SIAP"
+          Write-Host "=========================================="
+
+          Write-Host ""
           Write-Host "IP Tailscale:"
+
           & "C:\Program Files\Tailscale\tailscale.exe" ip -4
-          Write-Host "=========================================="
+
+          Write-Host ""
           Write-Host "Username : runneradmin"
           Write-Host "Password : AriantoLumajang123!@"
+
+          Write-Host ""
           Write-Host "=========================================="
+          Write-Host "      WINDOWS SUDAH DIAKTIFKAN"
+          Write-Host "=========================================="
+
 
       - name: Keep Alive
         run: |
-          Write-Host "RDP aktif selama sesi runner tersedia."
+          Write-Host "RDP Arianto Lumajang tetap aktif."
+          Write-Host "Sesi akan berjalan selama runner GitHub tersedia."
+
           while ($true) {
             Start-Sleep -Seconds 300
           }
