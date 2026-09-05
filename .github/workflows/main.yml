@@ -1,0 +1,654 @@
+name: Windows RDP - Tailscale
+
+on:
+  workflow_dispatch:
+
+jobs:
+  rdp:
+    runs-on: windows-latest
+    timeout-minutes: 360
+
+    steps:
+
+      # ==========================================================
+      # 1. INFORMASI SISTEM
+      # ==========================================================
+      - name: System Information
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Continue"
+
+          Write-Host "========================================"
+          Write-Host " WINDOWS RDP"
+          Write-Host "========================================"
+
+          Get-CimInstance Win32_OperatingSystem |
+            Select-Object Caption, Version, OSArchitecture |
+            Format-List
+
+          Write-Host "CPU:"
+          Get-CimInstance Win32_Processor |
+            Select-Object -First 1 Name, NumberOfCores |
+            Format-List
+
+          $ram = Get-CimInstance Win32_ComputerSystem
+          Write-Host ("RAM: {0:N2} GB" -f ($ram.TotalPhysicalMemory / 1GB))
+
+          $disk = Get-PSDrive C
+          Write-Host ("Disk Free: {0:N2} GB" -f ($disk.Free / 1GB))
+
+
+      # ==========================================================
+      # 2. INSTALL TAILSCALE
+      # ==========================================================
+      - name: Install Tailscale
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          Write-Host "Checking Tailscale..."
+
+          $ts = Get-Command tailscale.exe `
+            -ErrorAction SilentlyContinue
+
+          if ($null -eq $ts) {
+
+              Write-Host "Tailscale belum ditemukan."
+
+              $winget = Get-Command winget.exe `
+                -ErrorAction SilentlyContinue
+
+              if ($null -eq $winget) {
+                  throw "winget tidak tersedia pada runner."
+              }
+
+              Write-Host "Installing Tailscale..."
+
+              winget install `
+                --id Tailscale.Tailscale `
+                --exact `
+                --silent `
+                --accept-package-agreements `
+                --accept-source-agreements
+
+          }
+
+          Start-Sleep -Seconds 5
+
+          $paths = @(
+            "$env:ProgramFiles\Tailscale\tailscale.exe",
+            "$env:ProgramFiles(x86)\Tailscale\tailscale.exe"
+          )
+
+          $tsPath = $null
+
+          foreach ($p in $paths) {
+              if (Test-Path $p) {
+                  $tsPath = $p
+                  break
+              }
+          }
+
+          if ($null -eq $tsPath) {
+
+              $found = Get-ChildItem `
+                "C:\Program Files",
+                "C:\Program Files (x86)" `
+                -Filter "tailscale.exe" `
+                -Recurse `
+                -ErrorAction SilentlyContinue |
+                Select-Object -First 1
+
+              if ($null -ne $found) {
+                  $tsPath = $found.FullName
+              }
+          }
+
+          if ($null -eq $tsPath) {
+              throw "tailscale.exe tidak ditemukan setelah instalasi."
+          }
+
+          Write-Host "Tailscale ditemukan:"
+          Write-Host $tsPath
+
+          "TAILSCALE_PATH=$tsPath" |
+            Out-File $env:GITHUB_ENV -Append
+
+
+      # ==========================================================
+      # 3. START TAILSCALE SERVICE
+      # ==========================================================
+      - name: Start Tailscale
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          $svc = Get-Service `
+            -Name "Tailscale" `
+            -ErrorAction SilentlyContinue
+
+          if ($null -eq $svc) {
+              throw "Service Tailscale tidak ditemukan."
+          }
+
+          Write-Host "Tailscale service: $($svc.Status)"
+
+          if ($svc.Status -ne "Running") {
+              Start-Service -Name "Tailscale"
+          }
+
+          Start-Sleep -Seconds 5
+
+          $svc = Get-Service `
+            -Name "Tailscale"
+
+          Write-Host "Status: $($svc.Status)"
+
+
+      # ==========================================================
+      # 4. CONNECT TAILSCALE
+      # ==========================================================
+      - name: Connect Tailscale
+        shell: powershell
+        env:
+          # ======================================================
+          # tskey-auth-kvYRkh8jPL11CNTRL-3ZmXJNwE5a2UHvKGpR95a2FTaMNQacNDR
+          # ======================================================
+          TAILSCALE_AUTHKEY: "tskey-auth-kvYRkh8jPL11CNTRL-3ZmXJNwE5a2UHvKGpR95a2FTaMNQacNDR"
+
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          $auth = $env:TAILSCALE_AUTHKEY
+
+          if (
+              [string]::IsNullOrWhiteSpace($auth) -or
+              $auth -eq "ISI_AUTH_KEY_TAILSCALE_DI_SINI"
+          ) {
+              throw "Isi TAILSCALE_AUTHKEY terlebih dahulu."
+          }
+
+          Write-Host "Menghubungkan Tailscale..."
+
+          & "$env:TAILSCALE_PATH" up `
+            --authkey="$auth" `
+            --unattended `
+            --accept-routes=false
+
+          Start-Sleep -Seconds 5
+
+          Write-Host ""
+          Write-Host "Tailscale status:"
+          & "$env:TAILSCALE_PATH" status
+
+
+      # ==========================================================
+      # 5. ENABLE RDP
+      # ==========================================================
+      - name: Enable Remote Desktop
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          Write-Host "Mengaktifkan Remote Desktop..."
+
+          Set-ItemProperty `
+            -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server" `
+            -Name "fDenyTSConnections" `
+            -Type DWord `
+            -Value 0
+
+          Set-ItemProperty `
+            -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp" `
+            -Name "UserAuthentication" `
+            -Type DWord `
+            -Value 1
+
+          Enable-NetFirewallRule `
+            -DisplayGroup "Remote Desktop" `
+            -ErrorAction SilentlyContinue
+
+          Set-Service `
+            -Name "TermService" `
+            -StartupType Automatic
+
+          Start-Service `
+            -Name "TermService" `
+            -ErrorAction SilentlyContinue
+
+          Write-Host "RDP berhasil diaktifkan."
+
+
+      # ==========================================================
+      # 6. CREATE RDP USER
+      # ==========================================================
+      - name: Create RDP User
+        shell: powershell
+        env:
+          RDP_USERNAME: "runneradmin"
+          RDP_PASSWORD: "AriantoRdpWin2026!A"
+
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          $username = $env:RDP_USERNAME
+          $password = $env:RDP_PASSWORD
+
+          Write-Host "Menyiapkan user RDP..."
+          Write-Host "Username: $username"
+
+          # ------------------------------------------------------
+          # VALIDASI PASSWORD
+          # ------------------------------------------------------
+
+          if ([string]::IsNullOrWhiteSpace($password)) {
+              throw "Password kosong."
+          }
+
+          if ($password.Length -lt 8) {
+              throw "Password minimal 8 karakter."
+          }
+
+          $upper  = $password -cmatch '[A-Z]'
+          $lower  = $password -cmatch '[a-z]'
+          $number = $password -match '[0-9]'
+          $symbol = $password -match '[^a-zA-Z0-9]'
+
+          if (-not ($upper -and $lower -and $number -and $symbol)) {
+              throw "Password harus memiliki huruf besar, huruf kecil, angka dan simbol."
+          }
+
+          # ------------------------------------------------------
+          # SECURE PASSWORD
+          # ------------------------------------------------------
+
+          $securePassword = ConvertTo-SecureString `
+            $password `
+            -AsPlainText `
+            -Force
+
+          # ------------------------------------------------------
+          # CEK USER
+          # ------------------------------------------------------
+
+          $user = Get-LocalUser `
+            -Name $username `
+            -ErrorAction SilentlyContinue
+
+          if ($null -eq $user) {
+
+              Write-Host "User belum ada. Membuat user..."
+
+              New-LocalUser `
+                -Name $username `
+                -Password $securePassword `
+                -FullName "RDP User" `
+                -Description "RDP User" `
+                -PasswordNeverExpires `
+                -UserMayNotChangePassword `
+                -ErrorAction Stop
+
+          }
+          else {
+
+              Write-Host "User sudah ada."
+              Write-Host "Mengatur password baru..."
+
+              Set-LocalUser `
+                -Name $username `
+                -Password $securePassword `
+                -ErrorAction Stop
+          }
+
+          # ------------------------------------------------------
+          # REMOTE DESKTOP USERS
+          # ------------------------------------------------------
+
+          $rdpGroup = Get-LocalGroup `
+            -Name "Remote Desktop Users" `
+            -ErrorAction SilentlyContinue
+
+          if ($null -ne $rdpGroup) {
+
+              $member = Get-LocalGroupMember `
+                -Group "Remote Desktop Users" `
+                -ErrorAction SilentlyContinue |
+                Where-Object {
+                    $_.Name -match "\\$([regex]::Escape($username))$"
+                }
+
+              if ($null -eq $member) {
+
+                  Add-LocalGroupMember `
+                    -Group "Remote Desktop Users" `
+                    -Member $username `
+                    -ErrorAction Stop
+
+              }
+          }
+
+          # ------------------------------------------------------
+          # ADMINISTRATORS
+          # ------------------------------------------------------
+
+          $adminMember = Get-LocalGroupMember `
+            -Group "Administrators" `
+            -ErrorAction SilentlyContinue |
+            Where-Object {
+                $_.Name -match "\\$([regex]::Escape($username))$"
+            }
+
+          if ($null -eq $adminMember) {
+
+              Add-LocalGroupMember `
+                -Group "Administrators" `
+                -Member $username `
+                -ErrorAction SilentlyContinue
+          }
+
+          Write-Host ""
+          Write-Host "========================================"
+          Write-Host " RDP USER BERHASIL"
+          Write-Host "========================================"
+          Write-Host "User     : $username"
+          Write-Host "Password : $password"
+          Write-Host "========================================"
+
+
+      # ==========================================================
+      # 7. PERFORMANCE
+      # ==========================================================
+      - name: Optimize Windows
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Continue"
+
+          Write-Host "Optimizing Windows..."
+
+          powercfg /setactive SCHEME_MIN
+
+          powercfg /change monitor-timeout-ac 0
+          powercfg /change standby-timeout-ac 0
+          powercfg /change disk-timeout-ac 0
+
+          Write-Host "Performance mode selesai."
+
+
+      # ==========================================================
+      # 8. INSTALL CHROME
+      # ==========================================================
+      - name: Install Google Chrome
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          $chromePaths = @(
+            "$env:ProgramFiles\Google\Chrome\Application\chrome.exe",
+            "${env:ProgramFiles(x86)}\Google\Chrome\Application\chrome.exe",
+            "$env:LOCALAPPDATA\Google\Chrome\Application\chrome.exe"
+          )
+
+          $chromeExists = $false
+
+          foreach ($p in $chromePaths) {
+              if (Test-Path $p) {
+                  $chromeExists = $true
+                  Write-Host "Chrome sudah tersedia: $p"
+                  break
+              }
+          }
+
+          if (-not $chromeExists) {
+
+              Write-Host "Menginstall Chrome..."
+
+              $installer = "$env:TEMP\chrome_installer.exe"
+
+              Invoke-WebRequest `
+                -Uri "https://dl.google.com/chrome/install/latest/chrome_installer.exe" `
+                -OutFile $installer `
+                -UseBasicParsing
+
+              Start-Process `
+                -FilePath $installer `
+                -ArgumentList "/silent","/install" `
+                -Wait
+
+              Remove-Item `
+                $installer `
+                -Force `
+                -ErrorAction SilentlyContinue
+          }
+
+          Write-Host "Chrome selesai."
+
+
+      # ==========================================================
+      # 9. INSTALL VS CODE
+      # ==========================================================
+      - name: Install Visual Studio Code
+        shell: powershell
+        continue-on-error: true
+        run: |
+          if (Get-Command winget.exe -ErrorAction SilentlyContinue) {
+
+              Write-Host "Installing VS Code..."
+
+              winget install `
+                --id Microsoft.VisualStudioCode `
+                --exact `
+                --silent `
+                --accept-package-agreements `
+                --accept-source-agreements
+
+          }
+          else {
+              Write-Warning "winget tidak tersedia. VS Code dilewati."
+          }
+
+
+      # ==========================================================
+      # 10. FIREWALL RDP
+      # ==========================================================
+      - name: Configure RDP Firewall
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Continue"
+
+          Write-Host "Configuring firewall..."
+
+          Enable-NetFirewallRule `
+            -DisplayGroup "Remote Desktop" `
+            -ErrorAction SilentlyContinue
+
+          New-NetFirewallRule `
+            -DisplayName "RDP TCP 3389" `
+            -Direction Inbound `
+            -Protocol TCP `
+            -LocalPort 3389 `
+            -Action Allow `
+            -ErrorAction SilentlyContinue
+
+          Write-Host "Firewall selesai."
+
+
+      # ==========================================================
+      # 11. CHECK RDP
+      # ==========================================================
+      - name: Check RDP
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          Start-Sleep -Seconds 5
+
+          $service = Get-Service `
+            -Name "TermService"
+
+          Write-Host "TermService: $($service.Status)"
+
+          if ($service.Status -ne "Running") {
+              Start-Service `
+                -Name "TermService"
+          }
+
+          $test = Test-NetConnection `
+            -ComputerName "127.0.0.1" `
+            -Port 3389 `
+            -WarningAction SilentlyContinue
+
+          Write-Host "Port 3389: $($test.TcpTestSucceeded)"
+
+          if (-not $test.TcpTestSucceeded) {
+              throw "Port RDP 3389 belum aktif."
+          }
+
+
+      # ==========================================================
+      # 12. DISPLAY CONNECTION
+      # ==========================================================
+      - name: Display RDP Connection
+        shell: powershell
+        env:
+          RDP_USERNAME: "runneradmin"
+          RDP_PASSWORD: "AriantoRdpWin2026!A"
+
+        run: |
+          $ErrorActionPreference = "Continue"
+
+          Write-Host ""
+          Write-Host "========================================"
+          Write-Host "        WINDOWS RDP CONNECTION"
+          Write-Host "========================================"
+
+          $ip = & "$env:TAILSCALE_PATH" ip -4
+
+          Write-Host ""
+          Write-Host "Tailscale IP : $ip"
+          Write-Host "RDP Port     : 3389"
+          Write-Host "User         : $env:RDP_USERNAME"
+          Write-Host "Password     : $env:RDP_PASSWORD"
+
+          Write-Host ""
+          Write-Host "Connect:"
+          Write-Host "$ip`:3389"
+
+          Write-Host ""
+          Write-Host "========================================"
+
+
+      # ==========================================================
+      # 13. MONITOR
+      # ==========================================================
+      - name: RDP Monitor
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Continue"
+
+          Write-Host ""
+          Write-Host "========================================"
+          Write-Host "        RDP MONITOR AKTIF"
+          Write-Host "========================================"
+
+          $endTime = (Get-Date).AddMinutes(330)
+
+          while ((Get-Date) -lt $endTime) {
+
+              Write-Host ""
+              Write-Host "Time: $(Get-Date)"
+
+              # Tailscale
+              $ts = Get-Service `
+                -Name "Tailscale" `
+                -ErrorAction SilentlyContinue
+
+              if ($null -ne $ts) {
+
+                  if ($ts.Status -ne "Running") {
+
+                      Write-Warning "Tailscale berhenti."
+
+                      Start-Service `
+                        -Name "Tailscale" `
+                        -ErrorAction SilentlyContinue
+                  }
+              }
+
+              # RDP
+              $rdp = Get-Service `
+                -Name "TermService" `
+                -ErrorAction SilentlyContinue
+
+              if ($null -ne $rdp) {
+
+                  if ($rdp.Status -ne "Running") {
+
+                      Write-Warning "TermService berhenti."
+
+                      Start-Service `
+                        -Name "TermService" `
+                        -ErrorAction SilentlyContinue
+                  }
+              }
+
+              # Port
+              $port = Test-NetConnection `
+                -ComputerName "127.0.0.1" `
+                -Port 3389 `
+                -WarningAction SilentlyContinue
+
+              if ($port.TcpTestSucceeded) {
+                  Write-Host "RDP 3389 : OK"
+              }
+              else {
+                  Write-Warning "RDP 3389 : DOWN"
+              }
+
+              # Tailscale IP
+              try {
+
+                  $ip = & "$env:TAILSCALE_PATH" ip -4
+
+                  Write-Host "Tailscale : $ip"
+
+              }
+              catch {
+
+                  Write-Warning "Tailscale IP tidak terbaca."
+              }
+
+              # RAM
+              try {
+
+                  $os = Get-CimInstance Win32_OperatingSystem
+
+                  $freeRam = [math]::Round(
+                    $os.FreePhysicalMemory / 1MB,
+                    2
+                  )
+
+                  Write-Host "Free RAM : $freeRam GB"
+
+              }
+              catch {}
+
+              # Disk
+              try {
+
+                  $disk = Get-PSDrive C
+
+                  $freeDisk = [math]::Round(
+                    $disk.Free / 1GB,
+                    2
+                  )
+
+                  Write-Host "Free Disk : $freeDisk GB"
+
+              }
+              catch {}
+
+              Start-Sleep -Seconds 30
+          }
+
+          Write-Host ""
+          Write-Host "Monitoring selesai."
