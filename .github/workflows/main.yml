@@ -48,7 +48,15 @@ jobs:
           if (-not $success) {
               Write-Host "=== PROXY GAGAL/TIDAK VALID, MENGALIHKAN KE TAILSCALE ===" -ForegroundColor Cyan
               winget install --id Tailscale.Tailscale -e --accept-source-agreements --accept-package-agreements
-              Start-Service Tailscale
+              
+              # Beri jeda agar service terdaftar di sistem Windows
+              Write-Host "Menunggu instalasi service Tailscale selesai..."
+              Start-Sleep -Seconds 10
+              
+              # Nyalakan service menggunakan net start (lebih aman dari Start-Service)
+              net start Tailscale
+              
+              # Jalankan koneksi Tailscale
               & "C:\Program Files\Tailscale\tailscale.exe" up --authkey="tskey-auth-kaY8zm1zxB21CNTRL-xjY8VLMnFvhPuxpMxegFvhpcbD42xDVDM" --unattended
           }
 
