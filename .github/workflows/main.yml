@@ -14,11 +14,10 @@ on:
         type: string
 
       duration_hours:
-        description: "Durasi Keep Alive dalam jam"
+        description: "Durasi Keep Alive (jam)"
         required: true
         default: "6"
         type: string
-
 
 jobs:
   windows-rdp:
@@ -27,77 +26,64 @@ jobs:
 
     steps:
 
-      # ==========================================================
+      # =========================================================
       # BANNER
-      # ==========================================================
-      - name: Banner Arianto RDP
+      # =========================================================
+      - name: Arianto RDP Banner
         shell: powershell
         run: |
-
-          $banner = @'
-              .:!!!!!!!!:.
-           :!!!!!!!!!!!!!!!
-         .:!!!!!!!!!!UMM$$$$
-       .:!!!!!!XUWM$$$$$$$$$$P
-    .<!!!!UN$$$"  $$$$$$$$#
-    :!!UW$$$$$$$$   4$$$$*
-     $$$$$$$$$$$  d$$R"
-      '*$$$$$$$$$$O+#"
-    '''''''''
-
-    RDP WINDOWS 11 :
-'@
-
-          Write-Host $banner
+          Write-Host ""
+          Write-Host '              .:!!!!!!!!:.'
+          Write-Host '           :!!!!!!!!!!!!!!!'
+          Write-Host '         .:!!!!!!!!!!UMM$$$$'
+          Write-Host '       .:!!!!!!XUWM$$$$$$$$$$P'
+          Write-Host '    .<!!!!UN$$$""  $$$$$$$$#'
+          Write-Host '    :!!UW$$$$$$$$   4$$$$*'
+          Write-Host '     $$$$$$$$$$$  d$$R"'
+          Write-Host '      '*$$$$$$$$$$O+#"'
+          Write-Host '    ''''''''''
+          Write-Host ""
+          Write-Host "=================================================="
+          Write-Host "              RDP WINDOWS 11"
+          Write-Host "=================================================="
           Write-Host ""
 
-      # ==========================================================
+      # =========================================================
       # INFORMASI MESIN
-      # ==========================================================
-      - name: Informasi Mesin
+      # =========================================================
+      - name: Informasi VPS
         shell: powershell
         run: |
 
           $computer = Get-CimInstance Win32_ComputerSystem
-
           $ramGB = [math]::Round(
               $computer.TotalPhysicalMemory / 1GB,
               2
           )
 
           $cpu = Get-CimInstance Win32_Processor |
-              Select-Object -First 1 -ExpandProperty Name
+                 Select-Object -First 1 -ExpandProperty Name
 
-          $startTime = Get-Date
-
-          $hours = 6
-
-          $endTime = $startTime.AddHours($hours)
-
-          Write-Host "=================================================="
-          Write-Host "          INFORMASI RDP WINDOWS 11"
-          Write-Host "=================================================="
-          Write-Host ""
+          $start = Get-Date
+          $hours = [double]"${{ inputs.duration_hours }}"
+          $end = $start.AddHours($hours)
 
           Write-Host "RAM         : $ramGB GB"
           Write-Host "CPU         : $cpu"
-          Write-Host "JAM MULAI   : $($startTime.ToString('HH:mm:ss')) WIB"
-          Write-Host "JAM AKHIR   : $($endTime.ToString('HH:mm:ss')) WIB"
-
-          Write-Host ""
-          Write-Host "----- copyright©arianto2026 -----"
+          Write-Host "JAM MULAI   : $($start.ToString('HH:mm:ss')) WIB"
+          Write-Host "JAM AKHIR   : $($end.ToString('HH:mm:ss')) WIB"
           Write-Host ""
 
-      # ==========================================================
+          Write-Host "----- copyright©arianto2026 ----"
+
+      # =========================================================
       # INSTALL TAILSCALE
-      # ==========================================================
+      # =========================================================
       - name: Install Tailscale
         shell: powershell
         run: |
 
-          Write-Host "=================================================="
-          Write-Host "              INSTALL TAILSCALE"
-          Write-Host "=================================================="
+          Write-Host "Menginstal Tailscale..."
 
           winget install `
             --id Tailscale.Tailscale `
@@ -105,23 +91,14 @@ jobs:
             --accept-source-agreements `
             --accept-package-agreements
 
-          if ($LASTEXITCODE -ne 0) {
-              Write-Host "Winget gagal."
-              exit 1
-          }
+          # Memperbarui environment path agar file binary Tailscale langsung terdeteksi
+          $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
 
-          $tailscale = "C:\Program Files\Tailscale\tailscale.exe"
+          Write-Host "Tailscale selesai diinstal."
 
-          if (!(Test-Path $tailscale)) {
-              Write-Host "Tailscale tidak ditemukan."
-              exit 1
-          }
-
-          Write-Host "Tailscale berhasil diinstal."
-
-      # ==========================================================
+      # =========================================================
       # CONNECT TAILSCALE
-      # ==========================================================
+      # =========================================================
       - name: Connect Tailscale
         shell: powershell
         env:
@@ -130,51 +107,54 @@ jobs:
 
           $tailscale = "C:\Program Files\Tailscale\tailscale.exe"
 
+          if (!(Test-Path $tailscale)) {
+              Write-Host "ERROR: Tailscale tidak ditemukan."
+              exit 1
+          }
+
           Write-Host "Menyalakan service Tailscale..."
 
-          Start-Service Tailscale `
-            -ErrorAction SilentlyContinue
+          Start-Service Tailscale -ErrorAction SilentlyContinue
 
           Start-Sleep -Seconds 5
 
-          Write-Host "Menghubungkan ke Tailscale..."
+          Write-Host "Menghubungkan ke jaringan Tailscale..."
 
           & $tailscale up `
             --authkey="$env:TS_AUTHKEY" `
             --unattended
 
           if ($LASTEXITCODE -ne 0) {
-              Write-Host "Gagal menghubungkan Tailscale."
+              Write-Host "ERROR: Gagal menghubungkan Tailscale."
               exit 1
           }
 
           Write-Host "Tailscale berhasil terhubung."
 
-      # ==========================================================
-      # AKTIFKAN RDP
-      # ==========================================================
-      - name: Konfigurasi Windows RDP
+      # =========================================================
+      # KONFIGURASI RDP
+      # =========================================================
+      - name: Aktifkan Windows RDP
         shell: powershell
         env:
           RDP_PASSWORD: ${{ inputs.rdp_password }}
         run: |
 
-          Write-Host "=================================================="
-          Write-Host "             KONFIGURASI WINDOWS RDP"
-          Write-Host "=================================================="
+          Write-Host "Mengaktifkan Remote Desktop..."
 
-          $securePassword = ConvertTo-SecureString `
-            "$env:RDP_PASSWORD" `
-            -AsPlainText `
-            -Force
-
-          $user = Get-LocalUser `
+          # Mengatur password untuk user runneradmin yang sudah ada di GitHub Actions runner
+          $userExists = Get-LocalUser `
             -Name "runneradmin" `
             -ErrorAction SilentlyContinue
 
-          if ($null -eq $user) {
+          if ($null -eq $userExists) {
 
               Write-Host "Membuat user runneradmin..."
+
+              $securePassword = ConvertTo-SecureString `
+                "$env:RDP_PASSWORD" `
+                -AsPlainText `
+                -Force
 
               New-LocalUser `
                 -Name "runneradmin" `
@@ -182,17 +162,21 @@ jobs:
                 -Description "Arianto RDP User" `
                 -PasswordNeverExpires
 
-          }
-          else {
+          } else {
 
-              Write-Host "User runneradmin sudah tersedia."
+              Write-Host "User runneradmin sudah ada, memperbarui password..."
+
+              $securePassword = ConvertTo-SecureString `
+                "$env:RDP_PASSWORD" `
+                -AsPlainText `
+                -Force
 
               Set-LocalUser `
                 -Name "runneradmin" `
                 -Password $securePassword
           }
 
-          # Tambahkan user ke Remote Desktop Users
+          # Tambahkan ke Remote Desktop Users
           Add-LocalGroupMember `
             -Group "Remote Desktop Users" `
             -Member "runneradmin" `
@@ -204,7 +188,7 @@ jobs:
             -Name "fDenyTSConnections" `
             -Value 0
 
-          # Aktifkan Network Level Authentication
+          # NLA tetap aktif
           Set-ItemProperty `
             -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp" `
             -Name "UserAuthentication" `
@@ -214,13 +198,12 @@ jobs:
           Enable-NetFirewallRule `
             -DisplayGroup "Remote Desktop"
 
-          Write-Host ""
           Write-Host "RDP berhasil diaktifkan."
 
-      # ==========================================================
-      # TAMPILKAN IP DAN LOGIN
-      # ==========================================================
-      - name: Tampilkan Informasi Login RDP
+      # =========================================================
+      # INFORMASI LOGIN
+      # =========================================================
+      - name: Tampilkan Informasi RDP
         shell: powershell
         run: |
 
@@ -237,63 +220,57 @@ jobs:
           Write-Host ""
           Write-Host "RDP WINDOWS 11 :"
           Write-Host ""
-          Write-Host "RAM         : otomatis"
-          Write-Host "USERNAME    : runneradmin"
-          Write-Host "PASSWORD    : password dari Run workflow"
-          Write-Host "IP TAILSCALE: $ip"
-          Write-Host "PORT        : 3389"
+          Write-Host "USERNAME       : runneradmin"
+          Write-Host "PASSWORD       : Gunakan password yang dimasukkan"
+          Write-Host "IP TAILSCALE   : $ip"
+          Write-Host "PORT           : 3389"
           Write-Host ""
           Write-Host "=================================================="
-          Write-Host "               RDP SIAP DIGUNAKAN"
+          Write-Host "      RDP SIAP DIGUNAKAN"
           Write-Host "=================================================="
-          Write-Host ""
-          Write-Host "----- copyright©arianto2026 -----"
           Write-Host ""
 
-      # ==========================================================
+      # =========================================================
       # KEEP ALIVE
-      # ==========================================================
+      # =========================================================
       - name: Keep Alive
         shell: powershell
         run: |
 
-          $hours = 6
+          $hours = [double]"${{ inputs.duration_hours }}"
 
-          $totalSeconds = [int]($hours * 3600)
+          if ($hours -le 0) {
+              Write-Host "Durasi harus lebih besar dari 0."
+              exit 1
+          }
+
+          $seconds = [int]($hours * 3600)
 
           $startTime = Get-Date
-
-          $endTime = $startTime.AddSeconds($totalSeconds)
+          $endTime = $startTime.AddSeconds($seconds)
 
           Write-Host ""
           Write-Host "=================================================="
-          Write-Host "              ARIANTO RDP KEEP ALIVE"
+          Write-Host "           ARIANTO RDP KEEP ALIVE"
           Write-Host "=================================================="
           Write-Host ""
-
-          Write-Host "JAM MULAI : $($startTime.ToString('HH:mm:ss')) WIB"
-          Write-Host "JAM AKHIR : $($endTime.ToString('HH:mm:ss')) WIB"
-          Write-Host "DURASI     : $hours JAM"
-
+          Write-Host "Mulai  : $($startTime.ToString('HH:mm:ss')) WIB"
+          Write-Host "Selesai: $($endTime.ToString('HH:mm:ss')) WIB"
+          Write-Host "Durasi : $hours jam"
           Write-Host ""
 
           while ((Get-Date) -lt $endTime) {
 
-              $now = Get-Date
+              $remaining = $endTime - (Get-Date)
 
-              $remaining = $endTime - $now
-
-              Write-Host (
-                "RDP AKTIF | SISA {0:00}:{1:00}:{2:00}" -f
-                [math]::Floor($remaining.TotalHours),
-                $remaining.Minutes,
-                $remaining.Seconds
-              )
+              Write-Host `
+                "RDP aktif | Sisa: $($remaining.Hours) jam $($remaining.Minutes) menit $($remaining.Seconds) detik"
 
               Start-Sleep -Seconds 60
           }
 
           Write-Host ""
           Write-Host "=================================================="
-          Write-Host "           KEEP ALIVE SELESAI"
+          Write-Host "             WAKTU KEEP ALIVE HABIS"
           Write-Host "=================================================="
+          Write-Host ""
