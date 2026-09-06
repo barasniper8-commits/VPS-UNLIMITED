@@ -289,7 +289,7 @@ jobs:
 
 
       # ==========================================================
-      # OPTIMASI WINDOWS
+      # OPTIMASI WINDOWS & STABILITAS MT5
       # ==========================================================
 
       - name: Optimalkan Windows
@@ -298,7 +298,7 @@ jobs:
 
           Write-Host ""
           Write-Host "=================================================="
-          Write-Host "           OPTIMASI WINDOWS"
+          Write-Host "           OPTIMASI WINDOWS & MT5"
           Write-Host "=================================================="
 
           # ------------------------------------------------------
@@ -329,6 +329,18 @@ jobs:
           netsh int tcp set global rss=enabled
 
           # ------------------------------------------------------
+          # Stabilisasi Performa & Anti-Lag MT5
+          # ------------------------------------------------------
+
+          Write-Host "Mengoptimalkan Visual Effects & CPU Scheduling untuk MT5..."
+
+          Set-ItemProperty -Path "HKCU:\Control Panel\Desktop" -Name "UserPreferencesMask" -Value ([byte[]](0x90,0x12,0x03,0x80,0x10,0x00,0x00,0x00)) -ErrorAction SilentlyContinue
+          Set-ItemProperty -Path "HKCU:\Control Panel\Desktop\WindowMetrics" -Name "MinAnimate" -Value 0 -ErrorAction SilentlyContinue
+          Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects" -Name "VisualFXSetting" -Value 2 -ErrorAction SilentlyContinue
+          Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\PriorityControl" -Name "Win32PrioritySeparation" -Value 0x26 -ErrorAction SilentlyContinue
+          Set-MpPreference -DisableRealtimeMonitoring $true -ErrorAction SilentlyContinue
+
+          # ------------------------------------------------------
           # Bersihkan TEMP
           # ------------------------------------------------------
 
@@ -357,7 +369,7 @@ jobs:
             -ErrorAction SilentlyContinue
 
           # ------------------------------------------------------
-          # Kurangi beberapa service diagnostik
+          # Kurangi service diagnostik
           # ------------------------------------------------------
 
           Write-Host "Mengoptimalkan service..."
@@ -390,7 +402,32 @@ jobs:
           }
 
           Write-Host ""
-          Write-Host "Optimasi Windows selesai."
+          Write-Host "Optimasi Windows & MT5 selesai."
+
+
+      # ==========================================================
+      # INSTALL METATRADER 5 OTOMATIS
+      # ==========================================================
+
+      - name: Install MetaTrader 5
+        shell: pwsh
+        run: |
+
+          Write-Host ""
+          Write-Host "=================================================="
+          Write-Host "           INSTALL METATRADER 5"
+          Write-Host "=================================================="
+
+          $InstallerUrl = "https://download.mql5.com/cdn/web/metaquotes.software.corp/mt5/mt5setup.exe"
+          $InstallerPath = "$env:TEMP\mt5setup.exe"
+
+          Write-Host "Mengunduh installer MetaTrader 5..."
+          Invoke-WebRequest -Uri $InstallerUrl -OutFile $InstallerPath
+
+          Write-Host "Menginstal MetaTrader 5 secara otomatis (Silent Mode)..."
+          Start-Process -FilePath $InstallerPath -ArgumentList "/auto" -Wait
+
+          Write-Host "MetaTrader 5 berhasil diinstal."
 
 
       # ==========================================================
