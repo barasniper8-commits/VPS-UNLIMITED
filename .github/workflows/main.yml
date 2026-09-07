@@ -316,39 +316,44 @@ jobs:
 
           $DownloadUrl = "GANTI_DENGAN_DIRECT_DOWNLOAD_URL"
 
-          $DownloadDir =
-            "$env:USERPROFILE\Downloads"
-
-          $DownloadPath =
-            "$DownloadDir\trailing pro.txt"
-
-          New-Item `
-            -ItemType Directory `
-            -Path $DownloadDir `
-            -Force | Out-Null
-
-          Write-Host "Mengunduh file..."
-
-          Invoke-WebRequest `
-            -Uri $DownloadUrl `
-            -OutFile $DownloadPath `
-            -UseBasicParsing
-
-          if (-not (Test-Path $DownloadPath)) {
-
-              Write-Host "Download gagal."
-              exit 1
-
+          if ([string]::IsNullOrWhiteSpace($DownloadUrl) -or $DownloadUrl -eq "GANTI_DENGAN_DIRECT_DOWNLOAD_URL") {
+              Write-Host "URL download belum diisi. Melewati proses unduh file."
           }
+          else {
+              $DownloadDir =
+                "$env:USERPROFILE\Downloads"
 
-          $FileInfo = Get-Item $DownloadPath
+              $DownloadPath =
+                "$DownloadDir\trailing pro.txt"
 
-          Write-Host ""
-          Write-Host "DOWNLOAD BERHASIL"
-          Write-Host "Nama : $($FileInfo.Name)"
-          Write-Host ("Ukuran : {0:N2} KB" -f `
-            ($FileInfo.Length / 1KB))
-          Write-Host "Lokasi : $DownloadPath"
+              New-Item `
+                -ItemType Directory `
+                -Path $DownloadDir `
+                -Force | Out-Null
+
+              Write-Host "Mengunduh file..."
+
+              Invoke-WebRequest `
+                -Uri $DownloadUrl `
+                -OutFile $DownloadPath `
+                -UseBasicParsing
+
+              if (-not (Test-Path $DownloadPath)) {
+
+                  Write-Host "Download gagal."
+                  exit 1
+
+              }
+
+              $FileInfo = Get-Item $DownloadPath
+
+              Write-Host ""
+              Write-Host "DOWNLOAD BERHASIL"
+              Write-Host "Nama : $($FileInfo.Name)"
+              Write-Host ("Ukuran : {0:N2} KB" -f `
+                ($FileInfo.Length / 1KB))
+              Write-Host "Lokasi : $DownloadPath"
+          }
 
           Write-Host ""
           Write-Host "=================================================="
