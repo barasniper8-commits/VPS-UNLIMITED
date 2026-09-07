@@ -20,7 +20,6 @@ on:
         default: "6"
         type: string
 
-
 jobs:
   windows-rdp:
 
@@ -41,9 +40,6 @@ jobs:
           Write-Host "        VPS RDP ARIANTO LUMAJANG"
           Write-Host "        LUMAJANG - INDONESIA"
           Write-Host "=================================================="
-          Write-Host ""
-
-          Write-Host "=== INFORMASI WINDOWS ==="
 
           Get-CimInstance Win32_OperatingSystem |
             Select-Object Caption, Version, OSArchitecture
@@ -59,7 +55,8 @@ jobs:
 
           $RAM = Get-CimInstance Win32_ComputerSystem
 
-          Write-Host ("RAM : {0:N2} GB" -f ($RAM.TotalPhysicalMemory / 1GB))
+          Write-Host ("RAM : {0:N2} GB" -f `
+            ($RAM.TotalPhysicalMemory / 1GB))
 
           Write-Host ""
           Write-Host "=================================================="
@@ -90,7 +87,6 @@ jobs:
         shell: pwsh
         run: |
 
-          Write-Host ""
           Write-Host "=================================================="
           Write-Host "             INSTALL TAILSCALE"
           Write-Host "=================================================="
@@ -101,11 +97,16 @@ jobs:
             --accept-source-agreements `
             --accept-package-agreements
 
+          if ($LASTEXITCODE -ne 0) {
+              Write-Host "Install Tailscale gagal."
+              exit 1
+          }
+
           Write-Host "Tailscale berhasil diinstall."
 
 
       # ==========================================================
-      # START TAILSCALE
+      # CONNECT TAILSCALE
       # ==========================================================
 
       - name: Connect Tailscale
@@ -114,23 +115,18 @@ jobs:
           TS_AUTHKEY: ${{ inputs.tailscale_authkey }}
         run: |
 
-          Write-Host ""
-          Write-Host "Mengaktifkan service Tailscale..."
-
-          $TailscaleExe = "C:\Program Files\Tailscale\tailscale.exe"
+          $TailscaleExe =
+            "C:\Program Files\Tailscale\tailscale.exe"
 
           if (-not (Test-Path $TailscaleExe)) {
-
-            Write-Host "Tailscale executable tidak ditemukan."
-            exit 1
-
+              Write-Host "Tailscale tidak ditemukan."
+              exit 1
           }
 
-          Start-Service Tailscale -ErrorAction SilentlyContinue
+          Start-Service Tailscale `
+            -ErrorAction SilentlyContinue
 
-          Start-Sleep -Seconds 3
-
-          Write-Host "Menghubungkan ke jaringan Tailscale..."
+          Start-Sleep -Seconds 5
 
           & $TailscaleExe up `
             --authkey="$env:TS_AUTHKEY" `
@@ -138,10 +134,8 @@ jobs:
             --unattended
 
           if ($LASTEXITCODE -ne 0) {
-
-            Write-Host "Tailscale gagal terhubung."
-            exit 1
-
+              Write-Host "Tailscale gagal terhubung."
+              exit 1
           }
 
           Write-Host "Tailscale berhasil terhubung."
@@ -157,7 +151,6 @@ jobs:
           RDP_PASSWORD: ${{ inputs.rdp_password }}
         run: |
 
-          Write-Host ""
           Write-Host "=================================================="
           Write-Host "           KONFIGURASI REMOTE DESKTOP"
           Write-Host "=================================================="
@@ -165,29 +158,15 @@ jobs:
           $Username = "runneradmin"
           $Password = $env:RDP_PASSWORD
 
-          # ------------------------------------------------------
-          # Validasi password
-          # ------------------------------------------------------
-
           if ([string]::IsNullOrWhiteSpace($Password)) {
-
-            Write-Host "Password RDP kosong."
-            exit 1
-
+              Write-Host "Password RDP kosong."
+              exit 1
           }
-
-          # ------------------------------------------------------
-          # Buat SecureString
-          # ------------------------------------------------------
 
           $SecurePassword = ConvertTo-SecureString `
             $Password `
             -AsPlainText `
             -Force
-
-          # ------------------------------------------------------
-          # Cek user
-          # ------------------------------------------------------
 
           $UserExists = Get-LocalUser `
             -Name $Username `
@@ -195,40 +174,25 @@ jobs:
 
           if ($null -ne $UserExists) {
 
-            Write-Host "User runneradmin sudah ada."
-            Write-Host "Mengubah password user..."
-
-            Set-LocalUser `
-              -Name $Username `
-              -Password $SecurePassword
+              Set-LocalUser `
+                -Name $Username `
+                -Password $SecurePassword
 
           }
           else {
 
-            Write-Host "Membuat user runneradmin..."
-
-            New-LocalUser `
-              -Name $Username `
-              -Password $SecurePassword `
-              -FullName "Arianto Lumajang" `
-              -Description "RDP Arianto Lumajang" `
-              -PasswordNeverExpires:$true
+              New-LocalUser `
+                -Name $Username `
+                -Password $SecurePassword `
+                -FullName "Arianto Lumajang" `
+                -Description "RDP Arianto Lumajang" `
+                -PasswordNeverExpires:$true
 
           }
-
-          # ------------------------------------------------------
-          # Pastikan user aktif
-          # ------------------------------------------------------
 
           Enable-LocalUser `
             -Name $Username `
             -ErrorAction SilentlyContinue
-
-          # ------------------------------------------------------
-          # Tambahkan Administrators
-          # ------------------------------------------------------
-
-          Write-Host "Memeriksa group Administrators..."
 
           $AdminMembers = Get-LocalGroupMember `
             -Group "Administrators" `
@@ -241,110 +205,55 @@ jobs:
 
           if ($null -eq $AlreadyAdmin) {
 
-            Add-LocalGroupMember `
-              -Group "Administrators" `
-              -Member $Username
-
-            Write-Host "runneradmin ditambahkan ke Administrators."
+              Add-LocalGroupMember `
+                -Group "Administrators" `
+                -Member $Username
 
           }
-          else {
-
-            Write-Host "runneradmin sudah menjadi Administrator."
-
-          }
-
-          # ------------------------------------------------------
-          # Aktifkan RDP
-          # ------------------------------------------------------
-
-          Write-Host "Mengaktifkan Remote Desktop..."
 
           Set-ItemProperty `
             -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server" `
             -Name "fDenyTSConnections" `
             -Value 0
 
-          # ------------------------------------------------------
-          # Network Level Authentication
-          # ------------------------------------------------------
-
           Set-ItemProperty `
             -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp" `
             -Name "UserAuthentication" `
             -Value 1
 
-          # ------------------------------------------------------
-          # Firewall
-          # ------------------------------------------------------
-
-          Write-Host "Mengaktifkan Firewall Remote Desktop..."
-
           Enable-NetFirewallRule `
             -DisplayGroup "Remote Desktop" `
             -ErrorAction SilentlyContinue
 
-          Write-Host ""
           Write-Host "RDP berhasil dikonfigurasi."
 
 
       # ==========================================================
-      # OPTIMASI WINDOWS & STABILITAS MT5
+      # OPTIMASI WINDOWS
       # ==========================================================
 
       - name: Optimalkan Windows
         shell: pwsh
         run: |
 
-          Write-Host ""
           Write-Host "=================================================="
           Write-Host "           OPTIMASI WINDOWS & MT5"
           Write-Host "=================================================="
 
-          # ------------------------------------------------------
-          # High Performance
-          # ------------------------------------------------------
-
-          Write-Host "Mengatur Power Plan..."
-
           powercfg /setactive SCHEME_MIN
-
-          # ------------------------------------------------------
-          # Nonaktifkan Sleep
-          # ------------------------------------------------------
-
-          Write-Host "Menonaktifkan Sleep..."
 
           powercfg /change monitor-timeout-ac 0
           powercfg /change standby-timeout-ac 0
           powercfg /change hibernate-timeout-ac 0
 
-          # ------------------------------------------------------
-          # TCP Optimization
-          # ------------------------------------------------------
-
-          Write-Host "Mengoptimalkan TCP..."
-
           netsh int tcp set global autotuninglevel=normal
           netsh int tcp set global rss=enabled
 
-          # ------------------------------------------------------
-          # Stabilisasi Performa & Anti-Lag MT5
-          # ------------------------------------------------------
-
-          Write-Host "Mengoptimalkan Visual Effects & CPU Scheduling untuk MT5..."
-
-          Set-ItemProperty -Path "HKCU:\Control Panel\Desktop" -Name "UserPreferencesMask" -Value ([byte[]](0x90,0x12,0x03,0x80,0x10,0x00,0x00,0x00)) -ErrorAction SilentlyContinue
-          Set-ItemProperty -Path "HKCU:\Control Panel\Desktop\WindowMetrics" -Name "MinAnimate" -Value 0 -ErrorAction SilentlyContinue
-          Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects" -Name "VisualFXSetting" -Value 2 -ErrorAction SilentlyContinue
-          Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\PriorityControl" -Name "Win32PrioritySeparation" -Value 0x26 -ErrorAction SilentlyContinue
-          Set-MpPreference -DisableRealtimeMonitoring $true -ErrorAction SilentlyContinue
-
-          # ------------------------------------------------------
-          # Bersihkan TEMP
-          # ------------------------------------------------------
-
-          Write-Host "Membersihkan TEMP..."
+          Set-ItemProperty `
+            -Path "HKCU:\Control Panel\Desktop\WindowMetrics" `
+            -Name "MinAnimate" `
+            -Value 0 `
+            -ErrorAction SilentlyContinue
 
           Remove-Item `
             "$env:TEMP\*" `
@@ -352,125 +261,125 @@ jobs:
             -Force `
             -ErrorAction SilentlyContinue
 
-          Remove-Item `
-            "C:\Windows\Temp\*" `
-            -Recurse `
-            -Force `
-            -ErrorAction SilentlyContinue
-
-          # ------------------------------------------------------
-          # Recycle Bin
-          # ------------------------------------------------------
-
-          Write-Host "Membersihkan Recycle Bin..."
-
-          Clear-RecycleBin `
-            -Force `
-            -ErrorAction SilentlyContinue
-
-          # ------------------------------------------------------
-          # Kurangi service diagnostik
-          # ------------------------------------------------------
-
-          Write-Host "Mengoptimalkan service..."
-
-          $Services = @(
-            "DiagTrack",
-            "MapsBroker"
-          )
-
-          foreach ($ServiceName in $Services) {
-
-            $Service = Get-Service `
-              -Name $ServiceName `
-              -ErrorAction SilentlyContinue
-
-            if ($null -ne $Service) {
-
-              Stop-Service `
-                -Name $ServiceName `
-                -Force `
-                -ErrorAction SilentlyContinue
-
-              Set-Service `
-                -Name $ServiceName `
-                -StartupType Disabled `
-                -ErrorAction SilentlyContinue
-
-            }
-
-          }
-
-          Write-Host ""
-          Write-Host "Optimasi Windows & MT5 selesai."
+          Write-Host "Optimasi selesai."
 
 
       # ==========================================================
-      # INSTALL METATRADER 5 OTOMATIS
+      # INSTALL METATRADER 5
       # ==========================================================
 
       - name: Install MetaTrader 5
         shell: pwsh
         run: |
 
-          Write-Host ""
           Write-Host "=================================================="
           Write-Host "           INSTALL METATRADER 5"
           Write-Host "=================================================="
 
-          $InstallerUrl = "https://download.mql5.com/cdn/web/metaquotes.software.corp/mt5/mt5setup.exe"
-          $InstallerPath = "$env:TEMP\mt5setup.exe"
+          $InstallerUrl =
+            "https://download.mql5.com/cdn/web/metaquotes.software.corp/mt5/mt5setup.exe"
 
-          Write-Host "Mengunduh installer MetaTrader 5..."
-          Invoke-WebRequest -Uri $InstallerUrl -OutFile $InstallerPath
+          $InstallerPath =
+            "$env:TEMP\mt5setup.exe"
 
-          Write-Host "Menginstal MetaTrader 5 secara otomatis (Silent Mode)..."
-          Start-Process -FilePath $InstallerPath -ArgumentList "/auto" -Wait
+          Invoke-WebRequest `
+            -Uri $InstallerUrl `
+            -OutFile $InstallerPath
+
+          if (-not (Test-Path $InstallerPath)) {
+              Write-Host "Installer MT5 gagal didownload."
+              exit 1
+          }
+
+          Start-Process `
+            -FilePath $InstallerPath `
+            -ArgumentList "/auto" `
+            -Wait
 
           Write-Host "MetaTrader 5 berhasil diinstal."
 
 
       # ==========================================================
-      # CEK TAILSCALE
+      # DOWNLOAD FILE TAMBAHAN
+      #
+      # GANTI DENGAN DIRECT DOWNLOAD URL
+      # ==========================================================
+
+      - name: Download File Tambahan
+        shell: pwsh
+        run: |
+
+          Write-Host ""
+          Write-Host "=================================================="
+          Write-Host "             DOWNLOAD FILE TAMBAHAN"
+          Write-Host "=================================================="
+
+          $DownloadUrl = "GANTI_DENGAN_DIRECT_DOWNLOAD_URL"
+
+          $DownloadDir =
+            "$env:USERPROFILE\Downloads"
+
+          $DownloadPath =
+            "$DownloadDir\trailing pro.txt"
+
+          New-Item `
+            -ItemType Directory `
+            -Path $DownloadDir `
+            -Force | Out-Null
+
+          Write-Host "Mengunduh file..."
+
+          Invoke-WebRequest `
+            -Uri $DownloadUrl `
+            -OutFile $DownloadPath `
+            -UseBasicParsing
+
+          if (-not (Test-Path $DownloadPath)) {
+
+              Write-Host "Download gagal."
+              exit 1
+
+          }
+
+          $FileInfo = Get-Item $DownloadPath
+
+          Write-Host ""
+          Write-Host "DOWNLOAD BERHASIL"
+          Write-Host "Nama : $($FileInfo.Name)"
+          Write-Host ("Ukuran : {0:N2} KB" -f `
+            ($FileInfo.Length / 1KB))
+          Write-Host "Lokasi : $DownloadPath"
+
+          Write-Host ""
+          Write-Host "=================================================="
+
+
+      # ==========================================================
+      # TAILSCALE STATUS
       # ==========================================================
 
       - name: Tampilkan Informasi Tailscale
         shell: pwsh
         run: |
 
+          $TailscaleExe =
+            "C:\Program Files\Tailscale\tailscale.exe"
+
           Write-Host ""
           Write-Host "=================================================="
           Write-Host "             TAILSCALE STATUS"
           Write-Host "=================================================="
 
-          $TailscaleExe = "C:\Program Files\Tailscale\tailscale.exe"
-
-          Write-Host ""
-          Write-Host "Status:"
           & $TailscaleExe status
-
-          Write-Host ""
-          Write-Host "=================================================="
-          Write-Host "              IP TAILSCALE"
-          Write-Host "=================================================="
 
           $IP = & $TailscaleExe ip -4
 
           Write-Host ""
-          Write-Host "IP RDP:"
-          Write-Host $IP
-
-          Write-Host ""
-          Write-Host "=================================================="
-          Write-Host "              LOGIN RDP"
-          Write-Host "=================================================="
-
-          Write-Host ""
-          Write-Host "Computer : $IP"
+          Write-Host "IP RDP : $IP"
           Write-Host "Username : runneradmin"
           Write-Host "Password : ********"
-          Write-Host ""
 
+          Write-Host ""
           Write-Host "=================================================="
 
 
@@ -484,27 +393,27 @@ jobs:
           SESSION_HOURS: ${{ inputs.session_hours }}
         run: |
 
-          $Hours = 0
+          $Hours = 0.0
 
           if (-not [double]::TryParse(
-            $env:SESSION_HOURS,
-            [ref]$Hours
+              $env:SESSION_HOURS,
+              [ref]$Hours
           )) {
-
-            $Hours = 6
-
+              $Hours = 6
           }
 
           if ($Hours -le 0) {
-            $Hours = 6
+              $Hours = 6
           }
 
-          $TotalSeconds = [int]($Hours * 3600)
+          $TotalSeconds =
+            [int]($Hours * 3600)
 
           Write-Host ""
           Write-Host "=================================================="
           Write-Host "          ARIANTO RDP PRO"
           Write-Host "=================================================="
+
           Write-Host ""
           Write-Host "       A           A"
           Write-Host "      / \_________/ \"
@@ -512,11 +421,13 @@ jobs:
           Write-Host "      \    \ V /    /"
           Write-Host "       \____\_/____/"
           Write-Host ""
+
           Write-Host "          ARIANTO RDP PRO"
           Write-Host ""
           Write-Host "     L U M A J A N G"
           Write-Host "       C A N D I P U R O"
           Write-Host ""
+
           Write-Host "=================================================="
           Write-Host "Durasi sesi : $Hours jam"
           Write-Host "Status      : AKTIF"
@@ -527,14 +438,15 @@ jobs:
 
           while ((Get-Date) -lt $EndTime) {
 
-            $Remaining = $EndTime - (Get-Date)
+              $Remaining =
+                $EndTime - (Get-Date)
 
-            Write-Host (
-              "RDP aktif | Sisa waktu: {0:hh\:mm\:ss}" -f $Remaining
-            )
+              Write-Host (
+                "RDP aktif | Sisa waktu: {0:hh\:mm\:ss}" `
+                -f $Remaining
+              )
 
-            Start-Sleep -Seconds 300
-
+              Start-Sleep -Seconds 300
           }
 
           Write-Host ""
