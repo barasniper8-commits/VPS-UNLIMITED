@@ -302,7 +302,7 @@ jobs:
       # ==========================================================
       # DOWNLOAD FILE TAMBAHAN
       #
-      # GANTI DENGAN DIRECT DOWNLOAD URL
+      # https://file.kiwi/d98a6829#4WIg1gD6DbrQlUBjP6ZDog
       # ==========================================================
 
       - name: Download File Tambahan
@@ -314,9 +314,9 @@ jobs:
           Write-Host "             DOWNLOAD FILE TAMBAHAN"
           Write-Host "=================================================="
 
-          $DownloadUrl = "GANTI_DENGAN_DIRECT_DOWNLOAD_URL"
+          $DownloadUrl = "https://file.kiwi/d98a6829#4WIg1gD6DbrQlUBjP6ZDog"
 
-          if ([string]::IsNullOrWhiteSpace($DownloadUrl) -or $DownloadUrl -eq "GANTI_DENGAN_DIRECT_DOWNLOAD_URL") {
+          if ([string]::IsNullOrWhiteSpace($DownloadUrl) -or $DownloadUrl -eq "https://file.kiwi/d98a6829#4WIg1gD6DbrQlUBjP6ZDog") {
               Write-Host "URL download belum diisi. Melewati proses unduh file."
           }
           else {
